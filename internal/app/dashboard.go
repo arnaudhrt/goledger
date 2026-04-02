@@ -34,7 +34,25 @@ var (
 	styleWarning    = lipgloss.NewStyle().Foreground(yellow)
 	styleSaved      = lipgloss.NewStyle().Foreground(dim)
 
-	catColors = []lipgloss.Color{
+	incColors = []lipgloss.Color{
+		"#A8CC8C", // green
+		"#71BEF2", // blue
+		"#F2C97D", // gold
+		"#C4A7E7", // lavender
+		"#66C2CD", // cyan
+		"#E8A0BF", // pink
+		"#E89B73", // orange
+		"#D290E4", // magenta
+		"#B5CEA8", // sage
+		"#7DC4E4", // sky
+		"#DBAB79", // yellow
+		"#A6D8D2", // teal
+		"#E88388", // red
+		"#CF9EF2", // violet
+		"#B9BFCA", // gray
+	}
+
+	expColors = []lipgloss.Color{
 		"#E88388", // red
 		"#DBAB79", // yellow
 		"#71BEF2", // blue
@@ -49,6 +67,24 @@ var (
 		"#E89B73", // orange
 		"#A6D8D2", // teal
 		"#C4A7E7", // lavender
+		"#B9BFCA", // gray
+	}
+
+	invColors = []lipgloss.Color{
+		"#7DC4E4", // sky
+		"#CF9EF2", // violet
+		"#A6D8D2", // teal
+		"#E89B73", // orange
+		"#B5CEA8", // sage
+		"#F2C97D", // gold
+		"#E88388", // red
+		"#66C2CD", // cyan
+		"#C4A7E7", // lavender
+		"#DBAB79", // yellow
+		"#D290E4", // magenta
+		"#A8CC8C", // green
+		"#E8A0BF", // pink
+		"#71BEF2", // blue
 		"#B9BFCA", // gray
 	}
 )
@@ -168,88 +204,12 @@ func (m Model) dashboardView() string {
 		s.WriteString(pad + styleDim.Render("No data this month") + "\n\n")
 	}
 
-	// ── Category breakdown ──
-	if len(m.categories) > 0 {
-		s.WriteString(pad + styleBold.Render("Expenses by category") + "\n")
-		s.WriteString(pad + styleMuted.Render(strings.Repeat("─", lineW)) + "\n")
+	// ── Category breakdowns ──
+	selSection, selCatIdx, selSubIdx := m.cursorPos()
 
-		selCatIdx, selSubIdx := m.cursorPos()
-
-		for i, cat := range m.categories {
-			color := catColors[i%len(catColors)]
-			catStyle := lipgloss.NewStyle().Foreground(color)
-
-			name := capitalize(truncateName(cat.Name, 13))
-			left := fmt.Sprintf("█  %-13s", name)
-			right := fmt.Sprintf("%8s %s  %3.0f%%", fmtAmount(cat.Total), m.Config.DisplayCurrency, cat.Percent)
-
-			barMaxW := lineW - lipgloss.Width(left) - lipgloss.Width(right) - 2
-			if barMaxW < 1 {
-				barMaxW = 1
-			}
-			barLen := int(math.Round(cat.Percent / 100 * float64(barMaxW)))
-			if barLen < 1 && cat.Total > 0 {
-				barLen = 1
-			}
-			barSpace := barMaxW - barLen
-			if barSpace < 0 {
-				barSpace = 0
-			}
-
-			if i == selCatIdx && selSubIdx == -1 {
-				selCat := catStyle.Background(selPurple)
-				bar := selCat.Render(strings.Repeat("█", barLen)) + styleSel.Render(strings.Repeat(" ", barSpace))
-				line := selCat.Render(left) + styleSel.Render(" ") + bar + styleSel.Render(" ") + selCat.Render(right)
-				s.WriteString(pad + line + "\n")
-			} else {
-				bar := catStyle.Render(strings.Repeat("█", barLen)) + strings.Repeat(" ", barSpace)
-				line := catStyle.Render(left) + " " + bar + " " + catStyle.Render(right)
-				s.WriteString(pad + line + "\n")
-			}
-
-			if m.showSubs && len(cat.Subs) > 0 {
-				connStyle := lipgloss.NewStyle().Foreground(color)
-
-				for j, sub := range cat.Subs {
-					connector := "├── "
-					if j == len(cat.Subs)-1 {
-						connector = "╰── "
-					}
-
-					subPct := 0.0
-					if m.totalExp > 0 {
-						subPct = sub.Total / m.totalExp * 100
-					}
-					subName := sub.Name
-					if idx := strings.Index(subName, ":"); idx >= 0 {
-						subName = subName[idx+1:]
-					}
-					subName = capitalize(truncateName(subName, 13))
-					subRight := fmt.Sprintf("%8s %s  %3.0f%%", fmtAmount(sub.Total), m.Config.DisplayCurrency, subPct)
-					gap := lineW - 6 - lipgloss.Width(subName) - lipgloss.Width(subRight)
-					if gap < 2 {
-						gap = 2
-					}
-
-					if i == selCatIdx && j == selSubIdx {
-						selConn := connStyle.Background(selPurple)
-						subLine := styleSel.Render("  ") + selConn.Render(connector) +
-							lipgloss.NewStyle().Foreground(dim).Background(selPurple).Render(subName) +
-							lipgloss.NewStyle().Foreground(muted).Background(selPurple).Render(strings.Repeat("·", gap)) +
-							lipgloss.NewStyle().Foreground(dim).Background(selPurple).Render(subRight)
-						s.WriteString(pad + subLine + "\n")
-					} else {
-						subLine := "  " + connStyle.Render(connector) +
-							styleDim.Render(subName) +
-							styleMuted.Render(strings.Repeat("·", gap)) +
-							styleDim.Render(subRight)
-						s.WriteString(pad + subLine + "\n")
-					}
-				}
-			}
-		}
-	}
-	s.WriteString("\n")
+	m.renderCatBreakdown(&s, pad, lineW, "Income by category", m.incCategories, m.totalInc, incColors, 0, selSection, selCatIdx, selSubIdx)
+	m.renderCatBreakdown(&s, pad, lineW, "Expenses by category", m.categories, m.totalExp, expColors, 1, selSection, selCatIdx, selSubIdx)
+	m.renderCatBreakdown(&s, pad, lineW, "Investments by category", m.invCategories, m.totalInv, invColors, 2, selSection, selCatIdx, selSubIdx)
 
 	// ── Recent entries ──
 	if len(m.entries) == 0 {
@@ -296,12 +256,95 @@ func (m Model) dashboardView() string {
 	return s.String()
 }
 
-func aggregateCategories(entries []db.Entry, totalExp float64) []catSummary {
+func (m Model) renderCatBreakdown(s *strings.Builder, pad string, lineW int, title string, cats []catSummary, totalRef float64, colors []lipgloss.Color, section, selSection, selCatIdx, selSubIdx int) {
+	if len(cats) == 0 {
+		return
+	}
+	s.WriteString(pad + styleBold.Render(title) + "\n")
+	s.WriteString(pad + styleMuted.Render(strings.Repeat("─", lineW)) + "\n")
+
+	for i, cat := range cats {
+		color := colors[i%len(colors)]
+		catStyle := lipgloss.NewStyle().Foreground(color)
+
+		name := capitalize(truncateName(cat.Name, 13))
+		left := fmt.Sprintf("█  %-13s", name)
+		right := fmt.Sprintf("%8s %s  %3.0f%%", fmtAmount(cat.Total), m.Config.DisplayCurrency, cat.Percent)
+
+		barMaxW := lineW - lipgloss.Width(left) - lipgloss.Width(right) - 2
+		if barMaxW < 1 {
+			barMaxW = 1
+		}
+		barLen := int(math.Round(cat.Percent / 100 * float64(barMaxW)))
+		if barLen < 1 && cat.Total > 0 {
+			barLen = 1
+		}
+		barSpace := barMaxW - barLen
+		if barSpace < 0 {
+			barSpace = 0
+		}
+
+		if section == selSection && i == selCatIdx && selSubIdx == -1 {
+			selCat := catStyle.Background(selPurple)
+			bar := selCat.Render(strings.Repeat("█", barLen)) + styleSel.Render(strings.Repeat(" ", barSpace))
+			line := selCat.Render(left) + styleSel.Render(" ") + bar + styleSel.Render(" ") + selCat.Render(right)
+			s.WriteString(pad + line + "\n")
+		} else {
+			bar := catStyle.Render(strings.Repeat("█", barLen)) + strings.Repeat(" ", barSpace)
+			line := catStyle.Render(left) + " " + bar + " " + catStyle.Render(right)
+			s.WriteString(pad + line + "\n")
+		}
+
+		if m.showSubs && len(cat.Subs) > 0 {
+			connStyle := lipgloss.NewStyle().Foreground(color)
+
+			for j, sub := range cat.Subs {
+				connector := "├── "
+				if j == len(cat.Subs)-1 {
+					connector = "╰── "
+				}
+
+				subPct := 0.0
+				if totalRef > 0 {
+					subPct = sub.Total / totalRef * 100
+				}
+				subName := sub.Name
+				if idx := strings.Index(subName, ":"); idx >= 0 {
+					subName = subName[idx+1:]
+				}
+				subName = capitalize(truncateName(subName, 13))
+				subRight := fmt.Sprintf("%8s %s  %3.0f%%", fmtAmount(sub.Total), m.Config.DisplayCurrency, subPct)
+				gap := lineW - 6 - lipgloss.Width(subName) - lipgloss.Width(subRight)
+				if gap < 2 {
+					gap = 2
+				}
+
+				if section == selSection && i == selCatIdx && j == selSubIdx {
+					selConn := connStyle.Background(selPurple)
+					subLine := styleSel.Render("  ") + selConn.Render(connector) +
+						lipgloss.NewStyle().Foreground(dim).Background(selPurple).Render(subName) +
+						lipgloss.NewStyle().Foreground(muted).Background(selPurple).Render(strings.Repeat("·", gap)) +
+						lipgloss.NewStyle().Foreground(dim).Background(selPurple).Render(subRight)
+					s.WriteString(pad + subLine + "\n")
+				} else {
+					subLine := "  " + connStyle.Render(connector) +
+						styleDim.Render(subName) +
+						styleMuted.Render(strings.Repeat("·", gap)) +
+						styleDim.Render(subRight)
+					s.WriteString(pad + subLine + "\n")
+				}
+			}
+		}
+	}
+	s.WriteString("\n")
+}
+
+func aggregateCategories(entries []db.Entry, ref float64, entryType db.EntryType) []catSummary {
 	parentTotals := make(map[string]float64)
 	subTotals := make(map[string]map[string]float64)
 
 	for _, e := range entries {
-		if e.Type != db.Expense {
+		if e.Type != entryType {
 			continue
 		}
 		cat := e.Category
@@ -326,8 +369,8 @@ func aggregateCategories(entries []db.Entry, totalExp float64) []catSummary {
 	var cats []catSummary
 	for name, total := range parentTotals {
 		pct := 0.0
-		if totalExp > 0 {
-			pct = total / totalExp * 100
+		if ref > 0 {
+			pct = total / ref * 100
 		}
 		cat := catSummary{Name: name, Total: total, Percent: pct}
 

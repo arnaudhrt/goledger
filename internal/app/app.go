@@ -37,9 +37,11 @@ type Model struct {
 	Month time.Month
 
 	// Cached month data
-	entries    []db.Entry
-	categories []catSummary
-	totalInc   float64
+	entries       []db.Entry
+	incCategories []catSummary
+	categories    []catSummary
+	invCategories []catSummary
+	totalInc      float64
 	totalExp   float64
 	totalInv   float64
 	err        error
@@ -114,7 +116,9 @@ func (m *Model) loadMonth() {
 			m.totalInv += e.Amount
 		}
 	}
-	m.categories = aggregateCategories(entries, m.totalExp)
+	m.incCategories = aggregateCategories(entries, m.totalInc, db.Income)
+	m.categories = aggregateCategories(entries, m.totalExp, db.Expense)
+	m.invCategories = aggregateCategories(entries, m.totalInv, db.Investment)
 	if maxC := m.cursorMax(); maxC == 0 {
 		m.cursor = 0
 	} else if m.cursor >= maxC {
@@ -122,36 +126,67 @@ func (m *Model) loadMonth() {
 	}
 }
 
-// cursorMax returns the total number of selectable items in the category list.
+// allSections returns the category slices in display order.
+func (m Model) allSections() [3][]catSummary {
+	return [3][]catSummary{m.incCategories, m.categories, m.invCategories}
+}
+
+// cursorMax returns the total number of selectable items across all category sections.
 func (m Model) cursorMax() int {
-	n := len(m.categories)
-	if m.showSubs {
-		for _, cat := range m.categories {
-			n += len(cat.Subs)
+	n := 0
+	for _, cats := range m.allSections() {
+		n += len(cats)
+		if m.showSubs {
+			for _, cat := range cats {
+				n += len(cat.Subs)
+			}
 		}
 	}
 	return n
 }
 
-// cursorPos maps the flat cursor index to (category index, sub index).
-// subIdx is -1 when the cursor is on a parent category.
-func (m Model) cursorPos() (catIdx, subIdx int) {
+// cursorPos maps the flat cursor index to (section, category index, sub index).
+// section: 0=income, 1=expenses, 2=investments. subIdx is -1 for a parent category.
+func (m Model) cursorPos() (section, catIdx, subIdx int) {
 	pos := 0
-	for i, cat := range m.categories {
-		if pos == m.cursor {
-			return i, -1
-		}
-		pos++
-		if m.showSubs {
-			for j := range cat.Subs {
-				if pos == m.cursor {
-					return i, j
+	for sec, cats := range m.allSections() {
+		for i, cat := range cats {
+			if pos == m.cursor {
+				return sec, i, -1
+			}
+			pos++
+			if m.showSubs {
+				for j := range cat.Subs {
+					if pos == m.cursor {
+						return sec, i, j
+					}
+					pos++
 				}
-				pos++
 			}
 		}
 	}
-	return 0, -1
+	return 0, 0, -1
+}
+
+// flatIndex computes the flat cursor position for a given (section, catIdx).
+func (m Model) flatIndex(section, catIdx int) int {
+	pos := 0
+	sections := m.allSections()
+	for s := 0; s < section; s++ {
+		pos += len(sections[s])
+		if m.showSubs {
+			for _, cat := range sections[s] {
+				pos += len(cat.Subs)
+			}
+		}
+	}
+	for i := 0; i < catIdx && i < len(sections[section]); i++ {
+		pos++
+		if m.showSubs {
+			pos += len(sections[section][i].Subs)
+		}
+	}
+	return pos
 }
 
 func (m Model) Init() tea.Cmd {
@@ -223,16 +258,9 @@ func (m Model) updateDashboard(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		return m, nil
 	case key.Matches(keyMsg, m.keys.Subs):
-		catIdx, _ := m.cursorPos()
+		sec, catIdx, _ := m.cursorPos()
 		m.showSubs = !m.showSubs
-		pos := 0
-		for i := 0; i < catIdx; i++ {
-			pos++
-			if m.showSubs {
-				pos += len(m.categories[i].Subs)
-			}
-		}
-		m.cursor = pos
+		m.cursor = m.flatIndex(sec, catIdx)
 		return m, nil
 	case key.Matches(keyMsg, m.keys.Help):
 		m.helpAll = !m.helpAll
