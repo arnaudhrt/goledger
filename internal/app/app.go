@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/arnaudhrt/goledger/internal/config"
@@ -50,6 +51,11 @@ type Model struct {
 	bulk   bulkState
 	assign assignState
 
+	// Progress bars
+	progIncome  progress.Model
+	progExpense progress.Model
+	progInvest  progress.Model
+
 	width  int
 	height int
 }
@@ -69,11 +75,14 @@ func (m Model) viewWidth() int {
 func New(database *db.DB, cfg config.Config) Model {
 	now := time.Now()
 	m := Model{
-		DB:     database,
-		Config: cfg,
-		Screen: ScreenDashboard,
-		Year:   now.Year(),
-		Month:  now.Month(),
+		DB:          database,
+		Config:      cfg,
+		Screen:      ScreenDashboard,
+		Year:        now.Year(),
+		Month:       now.Month(),
+		progIncome:  progress.New(progress.WithScaledGradient("#73E2A7", "#1B9E5C"), progress.WithoutPercentage()),
+		progExpense: progress.New(progress.WithScaledGradient("#F28B82", "#C0392B"), progress.WithoutPercentage()),
+		progInvest:  progress.New(progress.WithScaledGradient("#7EC8E3", "#2E86AB"), progress.WithoutPercentage()),
 	}
 	m.loadMonth()
 	return m
@@ -114,6 +123,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		barW := m.viewWidth() - 4
+		if barW < 20 {
+			barW = 20
+		}
+		m.progIncome.Width = barW
+		m.progExpense.Width = barW
+		m.progInvest.Width = barW
 		return m, nil
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {

@@ -13,27 +13,30 @@ import (
 
 // Styles
 var (
-	green = lipgloss.Color("#4ade80")
-	red   = lipgloss.Color("#f87171")
-	blue  = lipgloss.Color("#60a5fa")
-	dim   = lipgloss.Color("#6b7280")
+	green  = lipgloss.Color("#73E2A7")
+	red    = lipgloss.Color("#F28B82")
+	blue   = lipgloss.Color("#7EC8E3")
+	yellow = lipgloss.Color("#DBAB79")
+	dim    = lipgloss.Color("#B9BFCA")
+	muted  = lipgloss.Color("#393d44")
 
 	styleIncome     = lipgloss.NewStyle().Foreground(green)
 	styleExpense    = lipgloss.NewStyle().Foreground(red)
 	styleInvestment = lipgloss.NewStyle().Foreground(blue)
 	styleDim        = lipgloss.NewStyle().Foreground(dim)
+	styleMuted      = lipgloss.NewStyle().Foreground(muted)
 	styleBold       = lipgloss.NewStyle().Bold(true)
 	styleHighlight  = lipgloss.NewStyle().Reverse(true)
-	styleWarning    = lipgloss.NewStyle().Foreground(lipgloss.Color("#fbbf24"))
-	styleSaved      = lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280"))
+	styleWarning    = lipgloss.NewStyle().Foreground(yellow)
+	styleSaved      = lipgloss.NewStyle().Foreground(dim)
 
 	catColors = []lipgloss.Color{
-		"#fb7185", // coral
-		"#fbbf24", // amber
-		"#60a5fa", // blue
-		"#f472b6", // pink
-		"#a78bfa", // purple
-		"#9ca3af", // gray
+		"#E88388", // red
+		"#DBAB79", // yellow
+		"#71BEF2", // blue
+		"#D290E4", // magenta
+		"#66C2CD", // cyan
+		"#B9BFCA", // gray
 	}
 )
 
@@ -58,88 +61,95 @@ func (m Model) dashboardView() string {
 	var s strings.Builder
 	s.WriteString("\n")
 
-	// ── Header ──
-	monthLabel := fmt.Sprintf("◂ %s %d ▸", m.Month.String(), m.Year)
-	title := styleBold.Render("GoLedger")
-	gap := w - 4 - lipgloss.Width(title) - len(monthLabel)
-	if gap < 2 {
-		gap = 2
+	// ── Header (bordered box) ──
+	boxW := w - 4
+	if boxW < 20 {
+		boxW = 20
 	}
-	s.WriteString(pad + title + strings.Repeat(" ", gap) + monthLabel + "\n")
-	s.WriteString(pad + styleDim.Render(fmt.Sprintf("Currency: %s", m.Config.DisplayCurrency)) + "\n\n")
+	innerW := boxW - 2
 
-	// ── Three-lane bar ──
-	// Bar is relative to income: expenses + investments + saved = income
-	barW := w - 4
-	if barW < 20 {
-		barW = 20
+	titleText := " GoLedger "
+	topAfter := innerW - len(titleText)
+	if topAfter < 0 {
+		topAfter = 0
+	}
+	topBorder := styleDim.Render("╭") + styleBold.Render(titleText) + styleDim.Render(strings.Repeat("─", topAfter)+"╮")
+	botBorder := styleDim.Render("╰" + strings.Repeat("─", innerW) + "╯")
+
+	monthLabel := fmt.Sprintf("◂  %s %d  ▸", m.Month.String(), m.Year)
+	currLabel := fmt.Sprintf("Currency: %s", m.Config.DisplayCurrency)
+
+	centerLine := func(text string) string {
+		textW := lipgloss.Width(text)
+		leftPad := (innerW - textW) / 2
+		if leftPad < 0 {
+			leftPad = 0
+		}
+		rightPad := innerW - textW - leftPad
+		if rightPad < 0 {
+			rightPad = 0
+		}
+		return styleDim.Render("│") + strings.Repeat(" ", leftPad) + text + strings.Repeat(" ", rightPad) + styleDim.Render("│")
 	}
 
+	s.WriteString(pad + topBorder + "\n")
+	s.WriteString(pad + centerLine("") + "\n")
+	s.WriteString(pad + centerLine(styleBold.Render(monthLabel)) + "\n")
+	s.WriteString(pad + centerLine(styleDim.Render(currLabel)) + "\n")
+	s.WriteString(pad + centerLine("") + "\n")
+	s.WriteString(pad + botBorder + "\n\n")
+
+	// ── Progress bars ──
 	total := m.totalInc + m.totalExp + m.totalInv
 	if total > 0 {
 		spending := m.totalExp + m.totalInv
 		overspent := m.totalInc > 0 && spending > m.totalInc
+		ref := math.Max(m.totalInc, spending)
 
-		if overspent {
-			// Bar scaled to spending, with green income marker
-			expW := int(math.Round(float64(barW) * m.totalExp / spending))
-			incomePos := int(math.Round(float64(barW) * m.totalInc / spending))
-			if incomePos >= barW {
-				incomePos = barW - 1
-			}
-
-			// Build bar with marker splitting the segments
-			beforeExp := min(incomePos, expW)
-			beforeInv := max(0, incomePos-expW)
-			afterStart := incomePos + 1
-			afterExp := max(0, expW-afterStart)
-			afterInv := barW - incomePos - 1 - afterExp
-
-			bar := styleExpense.Render(strings.Repeat("█", beforeExp)) +
-				styleInvestment.Render(strings.Repeat("█", beforeInv)) +
-				styleIncome.Render("┃") +
-				styleExpense.Render(strings.Repeat("█", afterExp)) +
-				styleInvestment.Render(strings.Repeat("█", max(0, afterInv)))
-			s.WriteString(pad + bar + "\n\n")
-		} else if m.totalInc > 0 {
-			// Normal bar: expenses + investments + saved
-			expW := int(math.Round(float64(barW) * m.totalExp / m.totalInc))
-			invW := int(math.Round(float64(barW) * m.totalInv / m.totalInc))
-			savedW := barW - expW - invW
-			if savedW < 0 {
-				savedW = 0
-			}
-
-			bar := styleExpense.Render(strings.Repeat("█", expW)) +
-				styleInvestment.Render(strings.Repeat("█", invW)) +
-				styleSaved.Render(strings.Repeat("█", savedW))
-			s.WriteString(pad + bar + "\n\n")
-		} else {
-			// No income: bar = expenses + investments
-			expW := int(math.Round(float64(barW) * m.totalExp / spending))
-			invW := barW - expW
-
-			bar := styleExpense.Render(strings.Repeat("█", expW)) +
-				styleInvestment.Render(strings.Repeat("█", invW))
-			s.WriteString(pad + bar + "\n\n")
+		if m.totalInc > 0 {
+			s.WriteString(pad + m.progIncome.ViewAs(m.totalInc/ref) + "\n")
 		}
+		if m.totalExp > 0 {
+			s.WriteString(pad + m.progExpense.ViewAs(m.totalExp/ref) + "\n")
+		}
+		if m.totalInv > 0 {
+			s.WriteString(pad + m.progInvest.ViewAs(m.totalInv/ref) + "\n")
+		}
+		s.WriteString("\n")
 
 		// Breakdown lines
+		lineW := min(w-4, 70)
+
+		breakdownLine := func(style lipgloss.Style, name string, amount float64, pct float64, showPct bool) string {
+			left := "█  " + name
+			right := fmt.Sprintf("%s %s", fmtAmount(amount), m.Config.DisplayCurrency)
+			if showPct {
+				right += fmt.Sprintf("  %3.0f%%", pct)
+			}
+			gap := lineW - len(left) - len(right)
+			if gap < 2 {
+				gap = 2
+			}
+			return style.Render(left) + styleMuted.Render(strings.Repeat("·", gap)) + style.Render(right)
+		}
+
 		if m.totalInc > 0 {
 			expPct := m.totalExp / m.totalInc * 100
 			invPct := m.totalInv / m.totalInc * 100
-			s.WriteString(pad + styleIncome.Render(fmt.Sprintf("income     %8s %s", fmtAmount(m.totalInc), m.Config.DisplayCurrency)) + "\n")
-			s.WriteString(pad + styleExpense.Render(fmt.Sprintf("expenses   %8s %s  %3.0f%%", fmtAmount(m.totalExp), m.Config.DisplayCurrency, expPct)) + "\n")
-			s.WriteString(pad + styleInvestment.Render(fmt.Sprintf("invest     %8s %s  %3.0f%%", fmtAmount(m.totalInv), m.Config.DisplayCurrency, invPct)) + "\n")
+			s.WriteString(pad + breakdownLine(styleIncome, "Income", m.totalInc, 0, false) + "\n")
+			s.WriteString(pad + styleMuted.Render(strings.Repeat("─", lineW)) + "\n")
+			s.WriteString(pad + breakdownLine(styleExpense, "Expenses", m.totalExp, expPct, true) + "\n")
+			s.WriteString(pad + breakdownLine(styleInvestment, "Invest", m.totalInv, invPct, true) + "\n")
 			if !overspent {
 				savedPct := saved / m.totalInc * 100
-				s.WriteString(pad + styleSaved.Render(fmt.Sprintf("saved      %8s %s  %3.0f%%", fmtAmount(saved), m.Config.DisplayCurrency, savedPct)) + "\n")
+				s.WriteString(pad + breakdownLine(styleSaved, "Saved", saved, savedPct, true) + "\n")
 			}
 			s.WriteString("\n")
 		} else {
-			s.WriteString(pad + styleIncome.Render(fmt.Sprintf("income     %8s %s", fmtAmount(0.0), m.Config.DisplayCurrency)) + "\n")
-			s.WriteString(pad + styleExpense.Render(fmt.Sprintf("expenses   %8s %s", fmtAmount(m.totalExp), m.Config.DisplayCurrency)) + "\n")
-			s.WriteString(pad + styleInvestment.Render(fmt.Sprintf("invest     %8s %s", fmtAmount(m.totalInv), m.Config.DisplayCurrency)) + "\n\n")
+			s.WriteString(pad + breakdownLine(styleIncome, "Income", 0, 0, false) + "\n")
+			s.WriteString(pad + styleMuted.Render(strings.Repeat("─", lineW)) + "\n")
+			s.WriteString(pad + breakdownLine(styleExpense, "Expenses", m.totalExp, 0, false) + "\n")
+			s.WriteString(pad + breakdownLine(styleInvestment, "Invest", m.totalInv, 0, false) + "\n\n")
 		}
 	} else {
 		s.WriteString(pad + styleDim.Render("No data this month") + "\n\n")
