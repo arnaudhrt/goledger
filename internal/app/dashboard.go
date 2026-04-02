@@ -13,13 +13,14 @@ import (
 
 // Styles
 var (
-	green  = lipgloss.Color("#73E2A7")
-	red    = lipgloss.Color("#F28B82")
-	blue   = lipgloss.Color("#7EC8E3")
-	yellow = lipgloss.Color("#DBAB79")
-	dim    = lipgloss.Color("#B9BFCA")
-	gray   = lipgloss.Color("#5a616c")
-	muted  = lipgloss.Color("#393d44")
+	green     = lipgloss.Color("#73E2A7")
+	red       = lipgloss.Color("#F28B82")
+	blue      = lipgloss.Color("#7EC8E3")
+	yellow    = lipgloss.Color("#DBAB79")
+	dim       = lipgloss.Color("#B9BFCA")
+	gray      = lipgloss.Color("#5a616c")
+	muted     = lipgloss.Color("#393d44")
+	selPurple = lipgloss.Color("#224044")
 
 	styleIncome     = lipgloss.NewStyle().Foreground(green)
 	styleExpense    = lipgloss.NewStyle().Foreground(red)
@@ -29,6 +30,7 @@ var (
 	styleGray       = lipgloss.NewStyle().Foreground(gray)
 	styleBold       = lipgloss.NewStyle().Bold(true)
 	styleHighlight  = lipgloss.NewStyle().Reverse(true)
+	styleSel        = lipgloss.NewStyle().Background(selPurple)
 	styleWarning    = lipgloss.NewStyle().Foreground(yellow)
 	styleSaved      = lipgloss.NewStyle().Foreground(dim)
 
@@ -38,6 +40,15 @@ var (
 		"#71BEF2", // blue
 		"#D290E4", // magenta
 		"#66C2CD", // cyan
+		"#A8CC8C", // green
+		"#E8A0BF", // pink
+		"#B5CEA8", // sage
+		"#CF9EF2", // violet
+		"#F2C97D", // gold
+		"#7DC4E4", // sky
+		"#E89B73", // orange
+		"#A6D8D2", // teal
+		"#C4A7E7", // lavender
 		"#B9BFCA", // gray
 	}
 )
@@ -103,6 +114,7 @@ func (m Model) dashboardView() string {
 
 	// ── Progress bars ──
 	total := m.totalInc + m.totalExp + m.totalInv
+	lineW := min(w-4, 70)
 	if total > 0 {
 		spending := m.totalExp + m.totalInv
 		overspent := m.totalInc > 0 && spending > m.totalInc
@@ -120,7 +132,6 @@ func (m Model) dashboardView() string {
 		s.WriteString("\n")
 
 		// Breakdown lines
-		lineW := min(w-4, 70)
 
 		breakdownLine := func(style lipgloss.Style, name string, amount float64, pct float64, showPct bool) string {
 			left := "█  " + name
@@ -160,35 +171,80 @@ func (m Model) dashboardView() string {
 	// ── Category breakdown ──
 	if len(m.categories) > 0 {
 		s.WriteString(pad + styleBold.Render("Expenses by category") + "\n")
-		s.WriteString(pad + styleDim.Render(strings.Repeat("─", min(w-4, 50))) + "\n")
+		s.WriteString(pad + styleMuted.Render(strings.Repeat("─", lineW)) + "\n")
 
-		maxBarW := w - 4 - 15 - 22
-		if maxBarW < 10 {
-			maxBarW = 10
-		}
+		selCatIdx, selSubIdx := m.cursorPos()
 
 		for i, cat := range m.categories {
 			color := catColors[i%len(catColors)]
-			barLen := int(math.Round(cat.Percent / 100 * float64(maxBarW)))
+			catStyle := lipgloss.NewStyle().Foreground(color)
+
+			name := capitalize(truncateName(cat.Name, 13))
+			left := fmt.Sprintf("█  %-13s", name)
+			right := fmt.Sprintf("%8s %s  %3.0f%%", fmtAmount(cat.Total), m.Config.DisplayCurrency, cat.Percent)
+
+			barMaxW := lineW - lipgloss.Width(left) - lipgloss.Width(right) - 2
+			if barMaxW < 1 {
+				barMaxW = 1
+			}
+			barLen := int(math.Round(cat.Percent / 100 * float64(barMaxW)))
 			if barLen < 1 && cat.Total > 0 {
 				barLen = 1
 			}
+			barSpace := barMaxW - barLen
+			if barSpace < 0 {
+				barSpace = 0
+			}
 
-			bar := lipgloss.NewStyle().Foreground(color).Render(strings.Repeat("█", barLen))
-			line := fmt.Sprintf("  %-13s %s %8s %s  %3.0f%%",
-				cat.Name, bar, fmtAmount(cat.Total), m.Config.DisplayCurrency, cat.Percent)
-
-			if i == m.cursor {
-				s.WriteString(pad + styleHighlight.Render(line) + "\n")
+			if i == selCatIdx && selSubIdx == -1 {
+				selCat := catStyle.Background(selPurple)
+				bar := selCat.Render(strings.Repeat("█", barLen)) + styleSel.Render(strings.Repeat(" ", barSpace))
+				line := selCat.Render(left) + styleSel.Render(" ") + bar + styleSel.Render(" ") + selCat.Render(right)
+				s.WriteString(pad + line + "\n")
 			} else {
+				bar := catStyle.Render(strings.Repeat("█", barLen)) + strings.Repeat(" ", barSpace)
+				line := catStyle.Render(left) + " " + bar + " " + catStyle.Render(right)
 				s.WriteString(pad + line + "\n")
 			}
 
 			if m.showSubs && len(cat.Subs) > 0 {
-				for _, sub := range cat.Subs {
-					subLine := fmt.Sprintf("    %-13s %8s %s",
-						sub.Name, fmtAmount(sub.Total), m.Config.DisplayCurrency)
-					s.WriteString(pad + styleDim.Render(subLine) + "\n")
+				connStyle := lipgloss.NewStyle().Foreground(color)
+
+				for j, sub := range cat.Subs {
+					connector := "├── "
+					if j == len(cat.Subs)-1 {
+						connector = "╰── "
+					}
+
+					subPct := 0.0
+					if m.totalExp > 0 {
+						subPct = sub.Total / m.totalExp * 100
+					}
+					subName := sub.Name
+					if idx := strings.Index(subName, ":"); idx >= 0 {
+						subName = subName[idx+1:]
+					}
+					subName = capitalize(truncateName(subName, 13))
+					subRight := fmt.Sprintf("%8s %s  %3.0f%%", fmtAmount(sub.Total), m.Config.DisplayCurrency, subPct)
+					gap := lineW - 6 - lipgloss.Width(subName) - lipgloss.Width(subRight)
+					if gap < 2 {
+						gap = 2
+					}
+
+					if i == selCatIdx && j == selSubIdx {
+						selConn := connStyle.Background(selPurple)
+						subLine := styleSel.Render("  ") + selConn.Render(connector) +
+							lipgloss.NewStyle().Foreground(dim).Background(selPurple).Render(subName) +
+							lipgloss.NewStyle().Foreground(muted).Background(selPurple).Render(strings.Repeat("·", gap)) +
+							lipgloss.NewStyle().Foreground(dim).Background(selPurple).Render(subRight)
+						s.WriteString(pad + subLine + "\n")
+					} else {
+						subLine := "  " + connStyle.Render(connector) +
+							styleDim.Render(subName) +
+							styleMuted.Render(strings.Repeat("·", gap)) +
+							styleDim.Render(subRight)
+						s.WriteString(pad + subLine + "\n")
+					}
 				}
 			}
 		}
@@ -291,6 +347,25 @@ func aggregateCategories(entries []db.Entry, totalExp float64) []catSummary {
 	})
 
 	return cats
+}
+
+func capitalize(s string) string {
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	return strings.ToUpper(string(r[:1])) + string(r[1:])
+}
+
+func truncateName(s string, maxW int) string {
+	if lipgloss.Width(s) <= maxW {
+		return s
+	}
+	runes := []rune(s)
+	for len(runes) > 0 && lipgloss.Width(string(runes)) > maxW-1 {
+		runes = runes[:len(runes)-1]
+	}
+	return string(runes) + "…"
 }
 
 func fmtAmount(n float64) string {

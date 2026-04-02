@@ -115,9 +115,43 @@ func (m *Model) loadMonth() {
 		}
 	}
 	m.categories = aggregateCategories(entries, m.totalExp)
-	if m.cursor >= len(m.categories) {
-		m.cursor = max(0, len(m.categories)-1)
+	if maxC := m.cursorMax(); maxC == 0 {
+		m.cursor = 0
+	} else if m.cursor >= maxC {
+		m.cursor = maxC - 1
 	}
+}
+
+// cursorMax returns the total number of selectable items in the category list.
+func (m Model) cursorMax() int {
+	n := len(m.categories)
+	if m.showSubs {
+		for _, cat := range m.categories {
+			n += len(cat.Subs)
+		}
+	}
+	return n
+}
+
+// cursorPos maps the flat cursor index to (category index, sub index).
+// subIdx is -1 when the cursor is on a parent category.
+func (m Model) cursorPos() (catIdx, subIdx int) {
+	pos := 0
+	for i, cat := range m.categories {
+		if pos == m.cursor {
+			return i, -1
+		}
+		pos++
+		if m.showSubs {
+			for j := range cat.Subs {
+				if pos == m.cursor {
+					return i, j
+				}
+				pos++
+			}
+		}
+	}
+	return 0, -1
 }
 
 func (m Model) Init() tea.Cmd {
@@ -184,12 +218,21 @@ func (m Model) updateDashboard(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		return m, nil
 	case key.Matches(keyMsg, m.keys.Down):
-		if len(m.categories) > 0 && m.cursor < len(m.categories)-1 {
+		if maxC := m.cursorMax(); m.cursor < maxC-1 {
 			m.cursor++
 		}
 		return m, nil
 	case key.Matches(keyMsg, m.keys.Subs):
+		catIdx, _ := m.cursorPos()
 		m.showSubs = !m.showSubs
+		pos := 0
+		for i := 0; i < catIdx; i++ {
+			pos++
+			if m.showSubs {
+				pos += len(m.categories[i].Subs)
+			}
+		}
+		m.cursor = pos
 		return m, nil
 	case key.Matches(keyMsg, m.keys.Help):
 		m.helpAll = !m.helpAll
