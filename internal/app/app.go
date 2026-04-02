@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -56,6 +57,10 @@ type Model struct {
 	progExpense progress.Model
 	progInvest  progress.Model
 
+	// Help
+	keys    dashboardKeyMap
+	helpAll bool
+
 	width  int
 	height int
 }
@@ -83,6 +88,7 @@ func New(database *db.DB, cfg config.Config) Model {
 		progIncome:  progress.New(progress.WithScaledGradient("#73E2A7", "#1B9E5C"), progress.WithoutPercentage()),
 		progExpense: progress.New(progress.WithScaledGradient("#F28B82", "#C0392B"), progress.WithoutPercentage()),
 		progInvest:  progress.New(progress.WithScaledGradient("#7EC8E3", "#2E86AB"), progress.WithoutPercentage()),
+		keys: dashboardKeys,
 	}
 	m.loadMonth()
 	return m
@@ -153,10 +159,8 @@ func (m Model) updateDashboard(msg tea.Msg) (Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	switch keyMsg.String() {
-	case "q":
-		return m, tea.Quit
-	case "left":
+	switch {
+	case key.Matches(keyMsg, m.keys.Left):
 		m.Month--
 		if m.Month < time.January {
 			m.Month = time.December
@@ -165,7 +169,7 @@ func (m Model) updateDashboard(msg tea.Msg) (Model, tea.Cmd) {
 		m.cursor = 0
 		m.loadMonth()
 		return m, nil
-	case "right":
+	case key.Matches(keyMsg, m.keys.Right):
 		m.Month++
 		if m.Month > time.December {
 			m.Month = time.January
@@ -174,20 +178,23 @@ func (m Model) updateDashboard(msg tea.Msg) (Model, tea.Cmd) {
 		m.cursor = 0
 		m.loadMonth()
 		return m, nil
-	case "up":
+	case key.Matches(keyMsg, m.keys.Up):
 		if m.cursor > 0 {
 			m.cursor--
 		}
 		return m, nil
-	case "down":
+	case key.Matches(keyMsg, m.keys.Down):
 		if len(m.categories) > 0 && m.cursor < len(m.categories)-1 {
 			m.cursor++
 		}
 		return m, nil
-	case "t":
+	case key.Matches(keyMsg, m.keys.Subs):
 		m.showSubs = !m.showSubs
 		return m, nil
-	case "b":
+	case key.Matches(keyMsg, m.keys.Help):
+		m.helpAll = !m.helpAll
+		return m, nil
+	case key.Matches(keyMsg, m.keys.Bulk):
 		m.enterBulk()
 		m.Screen = ScreenBulkPaste
 		return m, nil

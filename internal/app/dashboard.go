@@ -18,6 +18,7 @@ var (
 	blue   = lipgloss.Color("#7EC8E3")
 	yellow = lipgloss.Color("#DBAB79")
 	dim    = lipgloss.Color("#B9BFCA")
+	gray   = lipgloss.Color("#5a616c")
 	muted  = lipgloss.Color("#393d44")
 
 	styleIncome     = lipgloss.NewStyle().Foreground(green)
@@ -25,6 +26,7 @@ var (
 	styleInvestment = lipgloss.NewStyle().Foreground(blue)
 	styleDim        = lipgloss.NewStyle().Foreground(dim)
 	styleMuted      = lipgloss.NewStyle().Foreground(muted)
+	styleGray       = lipgloss.NewStyle().Foreground(gray)
 	styleBold       = lipgloss.NewStyle().Bold(true)
 	styleHighlight  = lipgloss.NewStyle().Reverse(true)
 	styleWarning    = lipgloss.NewStyle().Foreground(yellow)
@@ -232,8 +234,8 @@ func (m Model) dashboardView() string {
 	}
 	s.WriteString("\n")
 
-	// ── Footer ──
-	s.WriteString(pad + styleDim.Render("← → month  ↑↓ scroll  t subs  enter drill  a add  b bulk  s settings  q quit") + "\n\n")
+	// ── Footer (help) ──
+	s.WriteString(m.helpView(w-4) + "\n\n")
 
 	return s.String()
 }
