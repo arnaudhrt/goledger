@@ -12,7 +12,7 @@ import (
 	"github.com/arnaudhrt/goledger/internal/db"
 )
 
-const maxWidth = 120
+const maxWidth = 90
 
 // Screen identifies which screen is currently active.
 type Screen int
@@ -42,9 +42,9 @@ type Model struct {
 	categories    []catSummary
 	invCategories []catSummary
 	totalInc      float64
-	totalExp   float64
-	totalInv   float64
-	err        error
+	totalExp      float64
+	totalInv      float64
+	err           error
 
 	// Dashboard state
 	cursor   int
@@ -90,7 +90,7 @@ func New(database *db.DB, cfg config.Config) Model {
 		progIncome:  progress.New(progress.WithScaledGradient("#73E2A7", "#1B9E5C"), progress.WithoutPercentage()),
 		progExpense: progress.New(progress.WithScaledGradient("#F28B82", "#C0392B"), progress.WithoutPercentage()),
 		progInvest:  progress.New(progress.WithScaledGradient("#7EC8E3", "#2E86AB"), progress.WithoutPercentage()),
-		keys: dashboardKeys,
+		keys:        dashboardKeys,
 	}
 	m.loadMonth()
 	return m
@@ -142,11 +142,14 @@ func (m Model) cursorMax() int {
 			}
 		}
 	}
+	if len(m.entries) > 5 {
+		n++ // "see all entries" button
+	}
 	return n
 }
 
 // cursorPos maps the flat cursor index to (section, category index, sub index).
-// section: 0=income, 1=expenses, 2=investments. subIdx is -1 for a parent category.
+// section: 0=income, 1=expenses, 2=investments, 3=see-all button. subIdx is -1 for a parent category.
 func (m Model) cursorPos() (section, catIdx, subIdx int) {
 	pos := 0
 	for sec, cats := range m.allSections() {
@@ -164,6 +167,9 @@ func (m Model) cursorPos() (section, catIdx, subIdx int) {
 				}
 			}
 		}
+	}
+	if len(m.entries) > 5 && pos == m.cursor {
+		return 3, 0, -1
 	}
 	return 0, 0, -1
 }

@@ -54,6 +54,7 @@ func main() {
 		// Expenses - bills
 		{Date: d(5), Type: db.Expense, Note: "TRUE Internet", Amount: 599, Currency: "THB", Category: "bills:internet"},
 		{Date: d(5), Type: db.Expense, Note: "AIS mobile", Amount: 399, Currency: "THB", Category: "bills:mobile"},
+		{Date: d(20), Type: db.Expense, Note: "Annual health insurance premium payment", Amount: 8500, Currency: "THB", Category: "bills:insurance"},
 	}
 
 	if err := database.InsertEntries(entries); err != nil {

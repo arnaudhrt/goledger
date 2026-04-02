@@ -150,7 +150,7 @@ func (m Model) dashboardView() string {
 
 	// ── Progress bars ──
 	total := m.totalInc + m.totalExp + m.totalInv
-	lineW := min(w-4, 70)
+	lineW := min(w-4, 90)
 	if total > 0 {
 		spending := m.totalExp + m.totalInv
 		overspent := m.totalInc > 0 && spending > m.totalInc
@@ -167,15 +167,14 @@ func (m Model) dashboardView() string {
 		}
 		s.WriteString("\n")
 
-		// Breakdown lines
-
+		// breakdownLine renders a single summary row: "█  Label·····amount CUR  pct%"
 		breakdownLine := func(style lipgloss.Style, name string, amount float64, pct float64, showPct bool) string {
 			left := "█  " + name
 			right := fmt.Sprintf("%s %s", fmtAmount(amount), m.Config.DisplayCurrency)
 			if showPct {
 				right += fmt.Sprintf("  %3.0f%%", pct)
 			}
-			gap := lineW - len(left) - len(right)
+			gap := lineW - lipgloss.Width(left) - lipgloss.Width(right)
 			if gap < 2 {
 				gap = 2
 			}
@@ -211,17 +210,18 @@ func (m Model) dashboardView() string {
 	m.renderCatBreakdown(&s, pad, lineW, "Expenses by category", m.categories, m.totalExp, expColors, 1, selSection, selCatIdx, selSubIdx)
 	m.renderCatBreakdown(&s, pad, lineW, "Investments by category", m.invCategories, m.totalInv, invColors, 2, selSection, selCatIdx, selSubIdx)
 
-	// ── Recent entries ──
+	// ── Recent entries (last 5, dot-filled, with optional "see all" button) ──
 	if len(m.entries) == 0 {
 		s.WriteString(pad + styleDim.Render("No entries this month. Press 'b' to bulk paste or 'a' to add one.") + "\n")
 	} else {
-		s.WriteString(pad + styleBold.Render(fmt.Sprintf("Recent entries (%d total)", len(m.entries))) + "\n")
-		s.WriteString(pad + styleDim.Render(strings.Repeat("─", min(w-4, 50))) + "\n")
+		s.WriteString(pad + styleBold.Render("Recent entries") + " " + styleGray.Render(fmt.Sprintf("(%d total)", len(m.entries))) + "\n")
+		s.WriteString(pad + styleMuted.Render(strings.Repeat("─", lineW)) + "\n")
 
 		show := m.entries
 		if len(show) > 5 {
 			show = show[len(show)-5:]
 		}
+
 		for _, e := range show {
 			typeStyle := styleDim
 			switch e.Type {
@@ -233,24 +233,47 @@ func (m Model) dashboardView() string {
 				typeStyle = styleInvestment
 			}
 
-			note := e.Note
-			if len(note) > 20 {
-				note = note[:17] + "..."
+			// Build left/right to compute dot-fill gap (uses display width, not byte length).
+			note := truncateName(e.Note, 20)
+			left := fmt.Sprintf("  %s  %s  %s", e.Date.Format("02/01"), string(e.Type), note)
+			right := fmt.Sprintf("%s  %8s %s", e.Category, fmtAmount(e.Amount), e.Currency)
+			gap := lineW - lipgloss.Width(left) - lipgloss.Width(right)
+			if gap < 2 {
+				gap = 2
 			}
 
-			s.WriteString(fmt.Sprintf("%s  %s  %s  %-20s %8s %s  %s\n",
-				pad,
-				e.Date.Format("02/01"),
-				typeStyle.Render(string(e.Type)),
-				note,
-				fmtAmount(e.Amount),
-				e.Currency,
-				styleDim.Render(e.Category)))
+			s.WriteString(pad +
+				styleDim.Render("  "+e.Date.Format("02/01")+"  ") +
+				typeStyle.Render(string(e.Type)) +
+				styleDim.Render("  "+note) +
+				styleMuted.Render(strings.Repeat("·", gap)) +
+				styleGray.Render(e.Category) +
+				styleDim.Render(fmt.Sprintf("  %8s %s", fmtAmount(e.Amount), e.Currency)) + "\n")
+		}
+
+		// "See all" button — selectable via cursor (section 3).
+		if len(m.entries) > 5 {
+			selSection, _, _ := m.cursorPos()
+			label := "[ see all entries ]"
+			var btn string
+			if selSection == 3 {
+				btn = styleSel.Foreground(dim).Render(label)
+			} else {
+				btn = styleDim.Render(label)
+			}
+			btnW := lipgloss.Width(btn)
+			leftPad := (lineW - btnW) / 2
+			if leftPad < 0 {
+				leftPad = 0
+			}
+			s.WriteString("\n")
+			s.WriteString(pad + strings.Repeat(" ", leftPad) + btn + "\n")
 		}
 	}
 	s.WriteString("\n")
 
 	// ── Footer (help) ──
+	s.WriteString(pad + styleMuted.Render(strings.Repeat("─", lineW)) + "\n")
 	s.WriteString(m.helpView(w-4) + "\n\n")
 
 	return s.String()
